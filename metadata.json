@@ -1,0 +1,6 @@
+{
+  "name": "Caso Liliana Gómez - Informe Gerencial Legal",
+  "description": "Informe gerencial y tablero directivo del caso legal de la Sra. Liliana Gómez, liderado por la Dra. Luz Karime Beetar de Devis. Análisis de impacto y acciones en Civil Familia, Penal y Societario con visor documental inmediato.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
