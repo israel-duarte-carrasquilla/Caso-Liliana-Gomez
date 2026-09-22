@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   FileText, 
   Search, 
@@ -11,15 +11,27 @@ import {
   AlertTriangle, 
   Building2, 
   Check, 
-  X,
-  FileUp,
-  FolderOpen,
-  PenTool,
-  CheckCircle2
+  X, 
+  FileUp, 
+  FolderOpen, 
+  PenTool, 
+  CheckCircle2, 
+  LayoutGrid, 
+  List, 
+  Columns2,
+  Sparkles,
+  ExternalLink,
+  Copy,
+  Calendar,
+  Tag,
+  Hash,
+  ArrowRight
 } from 'lucide-react';
 import { CaseDocument, LegalFront, DocumentType } from '../types';
 import { FirmLogo } from './FirmLogo';
 import { getSignaturesForDocument } from '../services/electronicSignatureService';
+import { DocumentPreviewIframe } from './DocumentPreviewIframe';
+import { DocumentHoverPreviewCard } from './DocumentHoverPreviewCard';
 
 interface ExpedienteDigitalProps {
   documents: CaseDocument[];
@@ -35,6 +47,16 @@ export const ExpedienteDigital: React.FC<ExpedienteDigitalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<LegalFront | 'todos'>('todos');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'split' | 'grid' | 'list'>('split');
+  const [hoverPreviewEnabled, setHoverPreviewEnabled] = useState(true);
+  
+  // Currently hovered/selected document for preview
+  const [activePreviewDoc, setActivePreviewDoc] = useState<CaseDocument | null>(documents[0] || null);
+
+  // Floating hover popover state (for grid or cursor hover)
+  const [floatingDoc, setFloatingDoc] = useState<CaseDocument | null>(null);
+  const [popoverCoords, setPopoverCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // New Document Form State
   const [newTitle, setNewTitle] = useState('');
@@ -58,6 +80,44 @@ export const ExpedienteDigital: React.FC<ExpedienteDigitalProps> = ({
 
     return matchesSearch && matchesCategory;
   });
+
+  // Ensure active preview doc stays valid if list changes
+  React.useEffect(() => {
+    if (filteredDocs.length > 0) {
+      if (!activePreviewDoc || !filteredDocs.some(d => d.id === activePreviewDoc.id)) {
+        setActivePreviewDoc(filteredDocs[0]);
+      }
+    } else {
+      setActivePreviewDoc(null);
+    }
+  }, [filteredDocs]);
+
+  const handleRowMouseEnter = (doc: CaseDocument) => {
+    if (!hoverPreviewEnabled) return;
+    setActivePreviewDoc(doc);
+  };
+
+  const handleGridCardMouseEnter = (e: React.MouseEvent, doc: CaseDocument) => {
+    if (!hoverPreviewEnabled) return;
+    setActivePreviewDoc(doc);
+
+    // Optional floating popover calculation
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    
+    // Set popover position
+    const x = Math.min(rect.right + 12, window.innerWidth - 440);
+    const y = Math.max(10, rect.top);
+    setPopoverCoords({ x, y });
+    setFloatingDoc(doc);
+  };
+
+  const handleGridCardMouseLeave = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => {
+      setFloatingDoc(null);
+    }, 250);
+  };
 
   const handleCreateDocument = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +155,7 @@ export const ExpedienteDigital: React.FC<ExpedienteDigitalProps> = ({
         'Constancia de radicación e incorporación al expediente judicial',
         'Firma de recepción por la autoridad competente'
       ],
-      fullText: newFullText || `EXPEDIENTE JUDICIAL ELECTRÓNICO\nCASO: LILIANA GÓMEZ DE MENDOZA\nDIRECCIÓN: DRA. LUZ KARIME BEETAR DE DEVIS\n\n${newTitle.toUpperCase()}\n\nAUTORIDAD: ${newAuthority}\nRADICADO: ${newRadicado}\n\nRESUMEN:\n${newSummary}\n\nCONTENIDO:\n${newFullText || 'El contenido de este documento ha sido aportado conforme a los principios de lealtad procesal y veracidad, con pleno valor probatorio en las actuaciones en curso.'}`,
+      fullText: newFullText || `EXPEDIENTE JUDICIAL ELECTRÓNICO\nCASO: LILIANA GÓMEZ PRADILLA\nDIRECCIÓN: DRA. LUZ KARIME BEETAR DE DEVIS\n\n${newTitle.toUpperCase()}\n\nAUTORIDAD: ${newAuthority}\nRADICADO: ${newRadicado}\n\nRESUMEN:\n${newSummary}\n\nCONTENIDO:\n${newFullText || 'El contenido de este documento ha sido aportado conforme a los principios de lealtad procesal y veracidad, con pleno valor probatorio en las actuaciones en curso.'}`,
       downloadFileName: `${code}_${newTitle.replace(/\s+/g, '_')}.txt`,
       status: 'aportado',
       signedBy: 'Dra. Luz Karime Beetar de Devis'
@@ -103,6 +163,7 @@ export const ExpedienteDigital: React.FC<ExpedienteDigitalProps> = ({
 
     onAddDocument(newDoc);
     setIsAddModalOpen(false);
+    setActivePreviewDoc(newDoc);
     // Reset form
     setNewTitle('');
     setNewSummary('');
@@ -138,27 +199,29 @@ export const ExpedienteDigital: React.FC<ExpedienteDigitalProps> = ({
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
               <FolderOpen size={16} className="text-blue-700" />
-              <span>Repositorio Procesal Certificado</span>
+              <span>Repositorio Procesal Certificado • Vista de Expediente Digital</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold font-serif text-slate-900">
               Expediente Digital del Caso Liliana Gómez
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-2xl font-sans">
-              Consulte y visualice de manera inmediata cada auto judicial, denuncia penal, requerimiento societario y dictamen pericial con cadena de custodia probatoria.
+              Consulte, previsualice al pasar el ratón y examine cada auto judicial, denuncia penal y dictamen pericial con renderizado de miniaturas oficiales en tiempo real.
             </p>
           </div>
 
-          {/* Action to upload / add doc */}
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="self-start lg:self-auto px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition flex items-center gap-2 cursor-pointer"
-          >
-            <Plus size={16} />
-            <span>Incorporar Nuevo Archivo</span>
-          </button>
+          {/* Action buttons */}
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition flex items-center gap-2 cursor-pointer"
+            >
+              <Plus size={16} />
+              <span>Incorporar Nuevo Archivo</span>
+            </button>
+          </div>
         </div>
 
-        {/* Filter & Search Controls */}
+        {/* Filter, Search & View Mode Controls */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mt-5">
           {/* Search box */}
           <div className="relative flex-1">
@@ -173,7 +236,7 @@ export const ExpedienteDigital: React.FC<ExpedienteDigitalProps> = ({
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X size={14} />
               </button>
@@ -216,87 +279,381 @@ export const ExpedienteDigital: React.FC<ExpedienteDigitalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* View Layout & Hover Preview Controls Bar */}
+        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          {/* Hover Preview Toggle Switch */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setHoverPreviewEnabled(!hoverPreviewEnabled)}
+              className={`px-3 py-1.5 rounded-lg border flex items-center gap-2 transition cursor-pointer font-medium ${
+                hoverPreviewEnabled
+                  ? 'bg-blue-50 text-blue-900 border-blue-200'
+                  : 'bg-slate-50 text-slate-600 border-slate-200'
+              }`}
+              title="Activar o pausar la previsualización al pasar el ratón"
+            >
+              <Sparkles size={14} className={hoverPreviewEnabled ? 'text-blue-600' : 'text-slate-400'} />
+              <span>Previsualización rápida al pasar el ratón:</span>
+              <span className={`font-bold ${hoverPreviewEnabled ? 'text-emerald-700' : 'text-slate-500'}`}>
+                {hoverPreviewEnabled ? 'Activada' : 'Pausada'}
+              </span>
+            </button>
+            <span className="text-slate-400 hidden lg:inline">
+              (Pase el cursor sobre cualquier documento para inspeccionar su miniatura judicial)
+            </span>
+          </div>
+
+          {/* View Mode Buttons */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setViewMode('split')}
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                viewMode === 'split'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Vista Dividida: Lista con panel de previsualización en vivo sincronizado con el cursor"
+            >
+              <Columns2 size={14} />
+              <span className="hidden sm:inline">Previsualización Dividida</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Vista de Lista compacta"
+            >
+              <List size={14} />
+              <span className="hidden sm:inline">Lista</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Vista de Cuadrícula con miniaturas"
+            >
+              <LayoutGrid size={14} />
+              <span className="hidden sm:inline">Cuadrícula</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Document Grid with Instant Viewing */}
+      {/* Main Content Area based on View Mode */}
       {filteredDocs.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 text-slate-500">
           <FileText size={48} className="mx-auto text-slate-300 mb-3" />
           <h3 className="font-bold text-base text-slate-700">No se encontraron archivos en este criterio</h3>
           <p className="text-xs text-slate-500 mt-1">Pruebe ajustando el término de búsqueda o seleccionando otra categoría.</p>
         </div>
+      ) : viewMode === 'split' ? (
+        /* Split View: List on left + Instant Hover Preview Pane on right */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Documents Table/List (7 cols) */}
+          <div className="lg:col-span-7 space-y-3">
+            <div className="bg-slate-100 p-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 flex items-center justify-between border border-slate-200">
+              <span>{filteredDocs.length} documentos listados (pase el cursor sobre una fila)</span>
+              <span className="text-[11px] text-blue-800 font-mono">
+                Activo: {activePreviewDoc?.code || 'Ninguno'}
+              </span>
+            </div>
+
+            <div className="space-y-2.5">
+              {filteredDocs.map((doc) => {
+                const isSelected = activePreviewDoc?.id === doc.id;
+                const signatures = getSignaturesForDocument(doc.id);
+
+                return (
+                  <div
+                    key={doc.id}
+                    onMouseEnter={() => handleRowMouseEnter(doc)}
+                    onClick={() => setActivePreviewDoc(doc)}
+                    className={`p-4 rounded-xl border transition-all cursor-pointer select-none flex flex-col justify-between gap-3 ${
+                      isSelected
+                        ? 'bg-white border-blue-600 shadow-md ring-2 ring-blue-500/20'
+                        : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/70 shadow-2xs'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded border ${getBadgeStyle(doc.category)}`}>
+                            {getCategoryLabel(doc.category)}
+                          </span>
+                          <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {doc.code}
+                          </span>
+                          {signatures.length > 0 && (
+                            <span className="inline-flex items-center gap-1 font-semibold text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                              <CheckCircle2 size={11} /> {signatures.length} Firma(s)
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="font-bold text-slate-900 text-sm font-serif leading-snug hover:text-blue-900 transition">
+                          {doc.title}
+                        </h3>
+
+                        <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
+                          {doc.summary}
+                        </p>
+                      </div>
+
+                      {/* Instant open button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenDoc(doc);
+                        }}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-blue-900 text-white rounded-lg text-xs font-semibold transition shrink-0 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                        title="Abrir en Visor Completo"
+                      >
+                        <Eye size={14} />
+                        <span className="hidden sm:inline">Visualizar</span>
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-slate-700 font-semibold truncate max-w-[190px]">
+                          {doc.radicado}
+                        </span>
+                        <span>•</span>
+                        <span className="truncate max-w-[180px]">{doc.authority}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span>{doc.date}</span>
+                        <span>•</span>
+                        <span>{doc.folioCount} folios</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right Column: Docked Hover Preview Card (5 cols) */}
+          <div className="lg:col-span-5 sticky top-4">
+            {activePreviewDoc ? (
+              <DocumentHoverPreviewCard
+                document={activePreviewDoc}
+                onOpenDoc={onOpenDoc}
+                isFloating={false}
+              />
+            ) : (
+              <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
+                <FileText size={40} className="mx-auto text-slate-300 mb-2" />
+                <p className="text-xs">Pase el cursor sobre un documento para previsualizarlo aquí.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : viewMode === 'list' ? (
+        /* Compact List View with hover preview panel */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="p-3 pl-4">Código / Tipo</th>
+                    <th className="p-3">Título & Despacho</th>
+                    <th className="p-3">Radicado</th>
+                    <th className="p-3">Fecha & Folios</th>
+                    <th className="p-3 text-right pr-4">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredDocs.map((doc) => {
+                    const isSelected = activePreviewDoc?.id === doc.id;
+                    const signatures = getSignaturesForDocument(doc.id);
+
+                    return (
+                      <tr
+                        key={doc.id}
+                        onMouseEnter={() => handleRowMouseEnter(doc)}
+                        onClick={() => setActivePreviewDoc(doc)}
+                        className={`transition cursor-pointer select-none ${
+                          isSelected
+                            ? 'bg-blue-50/80 font-medium'
+                            : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <td className="p-3 pl-4 align-top whitespace-nowrap">
+                          <div className="font-mono font-bold text-slate-900">{doc.code}</div>
+                          <span className={`inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] uppercase font-bold border ${getBadgeStyle(doc.category)}`}>
+                            {getCategoryLabel(doc.category)}
+                          </span>
+                        </td>
+                        <td className="p-3 align-top max-w-xs">
+                          <div className="font-serif font-bold text-slate-900 text-xs line-clamp-1">{doc.title}</div>
+                          <div className="text-[11px] text-slate-500 truncate">{doc.authority}</div>
+                          {signatures.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 mt-1 font-semibold">
+                              <CheckCircle2 size={11} /> {signatures.length} Firma(s)
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 align-top font-mono text-[11px] text-slate-700 whitespace-nowrap">
+                          {doc.radicado}
+                        </td>
+                        <td className="p-3 align-top text-slate-500 whitespace-nowrap text-[11px]">
+                          <div>{doc.date}</div>
+                          <div className="text-[10px] text-slate-400">{doc.folioCount} pags.</div>
+                        </td>
+                        <td className="p-3 pr-4 align-top text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenDoc(doc);
+                            }}
+                            className="px-2.5 py-1 bg-slate-900 hover:bg-blue-900 text-white rounded text-[11px] font-semibold transition cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <Eye size={12} />
+                            <span>Abrir</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="lg:col-span-4 sticky top-4">
+            {activePreviewDoc && (
+              <DocumentHoverPreviewCard
+                document={activePreviewDoc}
+                onOpenDoc={onOpenDoc}
+                isFloating={false}
+              />
+            )}
+          </div>
+        </div>
       ) : (
+        /* Grid View with Miniature Iframe Thumbnails & Hover Preview */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredDocs.map((doc) => (
-            <div
-              key={doc.id}
-              className="bg-white rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition flex flex-col justify-between overflow-hidden group"
-            >
-              {/* Card Header */}
-              <div className="p-5 pb-3">
-                <div className="flex items-center justify-between gap-2 mb-2.5">
-                  <span className={`px-2 py-0.5 text-[11px] font-bold uppercase rounded border ${getBadgeStyle(doc.category)}`}>
-                    {getCategoryLabel(doc.category)}
-                  </span>
-                  <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-                    {doc.code}
-                  </span>
+          {filteredDocs.map((doc) => {
+            const signatures = getSignaturesForDocument(doc.id);
+
+            return (
+              <div
+                key={doc.id}
+                onMouseEnter={(e) => handleGridCardMouseEnter(e, doc)}
+                onMouseLeave={handleGridCardMouseLeave}
+                className="bg-white rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition flex flex-col justify-between overflow-hidden group relative"
+              >
+                {/* Visual Thumbnail Header with Live Iframe Miniature */}
+                <div className="h-32 bg-slate-100 border-b border-slate-200 relative overflow-hidden group-hover:border-blue-300 transition">
+                  <div className="absolute inset-0 pointer-events-none transform scale-90 origin-top">
+                    <DocumentPreviewIframe
+                      document={doc}
+                      height="180px"
+                      showWatermark={false}
+                      className="opacity-90 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Gradient Overlay with Quick Preview Action */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent flex items-end justify-between p-3 text-white">
+                    <span className="font-mono text-[10px] bg-slate-900/80 px-2 py-0.5 rounded backdrop-blur-xs font-bold">
+                      {doc.folioCount} folios
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onOpenDoc(doc)}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-[11px] font-semibold transition flex items-center gap-1 shadow-xs cursor-pointer opacity-90 group-hover:opacity-100"
+                    >
+                      <Eye size={12} />
+                      <span>Previsualizar</span>
+                    </button>
+                  </div>
                 </div>
 
-                <h3 className="font-bold text-slate-900 text-sm sm:text-base font-serif leading-snug line-clamp-2 mb-2 group-hover:text-blue-900 transition">
-                  {doc.title}
-                </h3>
-
-                <p className="text-xs text-slate-600 leading-relaxed line-clamp-3 mb-3">
-                  {doc.summary}
-                </p>
-
-                <div className="space-y-1 text-[11px] text-slate-500 pt-2 border-t border-slate-100">
-                  <div className="truncate">
-                    <strong>Radicado:</strong> <span className="font-mono text-slate-700">{doc.radicado}</span>
-                  </div>
-                  <div className="truncate">
-                    <strong>Despacho:</strong> <span>{doc.authority}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span><strong>Fecha:</strong> {doc.date}</span>
-                    <span><strong>Folios:</strong> {doc.folioCount} pags.</span>
-                  </div>
-
-                  {/* Electronic Signature Status */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    {getSignaturesForDocument(doc.id).length > 0 ? (
-                      <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                        <CheckCircle2 size={12} />
-                        {getSignaturesForDocument(doc.id).length} Firma(s) Electrónica(s)
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
-                        <PenTool size={11} className="text-slate-400" />
-                        Listo para Firma Digital
-                      </span>
-                    )}
-                    <span className="font-mono text-[10px] text-slate-400">
-                      {doc.integrityHash.substring(0, 8)}...
+                {/* Card Body */}
+                <div className="p-4 pb-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded border ${getBadgeStyle(doc.category)}`}>
+                      {getCategoryLabel(doc.category)}
+                    </span>
+                    <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                      {doc.code}
                     </span>
                   </div>
+
+                  <h3 className="font-bold text-slate-900 text-sm font-serif leading-snug line-clamp-2 mb-1.5 group-hover:text-blue-900 transition">
+                    {doc.title}
+                  </h3>
+
+                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 mb-3">
+                    {doc.summary}
+                  </p>
+
+                  <div className="space-y-1 text-[11px] text-slate-500 pt-2 border-t border-slate-100">
+                    <div className="truncate">
+                      <strong>Radicado:</strong> <span className="font-mono text-slate-700">{doc.radicado}</span>
+                    </div>
+                    <div className="truncate">
+                      <strong>Despacho:</strong> <span>{doc.authority}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span><strong>Fecha:</strong> {doc.date}</span>
+                      {signatures.length > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          <CheckCircle2 size={11} /> {signatures.length} Firma(s)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Action Bar */}
+                <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onOpenDoc(doc)}
+                    className="flex-1 py-2 px-3 bg-slate-900 hover:bg-blue-900 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                  >
+                    <Eye size={14} />
+                    <span>Visualizar Memorial</span>
+                  </button>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {/* Bottom Action Bar: Instant View Button */}
-              <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => onOpenDoc(doc)}
-                  className="flex-1 py-2 px-3 bg-slate-900 hover:bg-blue-900 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                  title="Abrir y visualizar inmediatamente este documento con membrete oficial"
-                >
-                  <Eye size={15} />
-                  <span>Visualizar Inmediatamente</span>
-                </button>
-              </div>
-            </div>
-          ))}
+      {/* Floating Hover Preview Popover (when hovering in Grid view if desired) */}
+      {floatingDoc && viewMode === 'grid' && (
+        <div 
+          className="fixed z-40 hidden xl:block w-96 shadow-2xl pointer-events-none transition-all duration-150 ease-out"
+          style={{ 
+            left: `${popoverCoords.x}px`, 
+            top: `${popoverCoords.y}px` 
+          }}
+        >
+          <div className="pointer-events-auto">
+            <DocumentHoverPreviewCard
+              document={floatingDoc}
+              onOpenDoc={onOpenDoc}
+              onClose={() => setFloatingDoc(null)}
+              isFloating={true}
+            />
+          </div>
         </div>
       )}
 
@@ -318,7 +675,7 @@ export const ExpedienteDigital: React.FC<ExpedienteDigitalProps> = ({
               </div>
               <button 
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 p-1"
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
               >
                 <X size={20} />
               </button>

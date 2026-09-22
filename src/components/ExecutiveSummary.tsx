@@ -15,6 +15,7 @@ import {
 import { CASE_METADATA, CASE_DOCUMENTS, CASE_MILESTONES, STRATEGIC_SCENARIOS } from '../data/caseData';
 import { CaseDocument } from '../types';
 import { DocReferencePill } from './DocReferencePill';
+import { CronogramaLegal } from './CronogramaLegal';
 
 interface ExecutiveSummaryProps {
   onOpenDoc: (doc: CaseDocument) => void;
@@ -359,6 +360,9 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Interactive Procedural Timeline: Audiencias, Términos Legales y Vencimientos */}
+      <CronogramaLegal onOpenDoc={onOpenDoc} onNavigateTab={onNavigateTab} />
 
       {/* Strategic Scenarios */}
       <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-2xs">
